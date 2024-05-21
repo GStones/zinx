@@ -185,8 +185,8 @@ func newClientConn(client ziface.IClient, conn net.Conn) ziface.IConnection {
 // StartWriter is the goroutine that writes messages to the client
 // (写消息Goroutine， 用户将数据发送给客户端)
 func (c *Connection) StartWriter() {
-	zlog.Ins().InfoF("Writer Goroutine is running")
-	defer zlog.Ins().InfoF("%s [conn Writer exit!]", c.RemoteAddr().String())
+	zlog.Ins().InfoF("Writer Goroutine is running %s", c.GetConnIdStr())
+	defer zlog.Ins().InfoF("%s [conn Writer exit!] %s", c.RemoteAddr().String(), c.GetConnIdStr())
 
 	for {
 		select {
@@ -210,8 +210,8 @@ func (c *Connection) StartWriter() {
 // StartReader is a goroutine that reads data from the client
 // (读消息Goroutine，用于从客户端中读取数据)
 func (c *Connection) StartReader() {
-	zlog.Ins().InfoF("[Reader Goroutine is running]")
-	defer zlog.Ins().InfoF("%s [conn Reader exit!]", c.RemoteAddr().String())
+	zlog.Ins().InfoF("[Reader Goroutine is running] %s", c.GetConnIdStr())
+	defer zlog.Ins().InfoF("%s [conn Reader exit!] %s", c.RemoteAddr().String(), c.GetConnIdStr())
 	defer c.Stop()
 	defer func() {
 		if err := recover(); err != nil {
@@ -236,7 +236,7 @@ func (c *Connection) StartReader() {
 				zlog.Ins().ErrorF("read msg head [read datalen=%d], error = %s", n, err)
 				return
 			}
-			zlog.Ins().DebugF("read buffer %s \n", hex.EncodeToString(buffer[0:n]))
+			zlog.Ins().DebugF("read buffer %s %s \n", hex.EncodeToString(buffer[0:n]), c.GetConnIdStr())
 
 			// If normal data is read from the peer, update the heartbeat detection Active state
 			// (正常读取到对端数据，更新心跳检测Active状态)
