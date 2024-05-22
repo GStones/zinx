@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -185,8 +186,8 @@ func newClientConn(client ziface.IClient, conn net.Conn) ziface.IConnection {
 // StartWriter is the goroutine that writes messages to the client
 // (写消息Goroutine， 用户将数据发送给客户端)
 func (c *Connection) StartWriter() {
-	zlog.Ins().InfoF("Writer Goroutine is running %s", c.GetConnIdStr())
-	defer zlog.Ins().InfoF("%s [conn Writer exit!] %s", c.RemoteAddr().String(), c.GetConnIdStr())
+	zlog.Ins().InfoF("Writer Goroutine is running connID=%s", c.GetConnIdStr())
+	defer zlog.Ins().InfoF("%s [conn Writer exit!] connID=%s", c.RemoteAddr().String(), c.GetConnIdStr())
 
 	for {
 		select {
@@ -198,7 +199,7 @@ func (c *Connection) StartWriter() {
 				}
 
 			} else {
-				zlog.Ins().ErrorF("msgBuffChan is Closed")
+				zlog.Ins().ErrorF("msgBuffChan is Closed connID=%s", c.GetConnIdStr())
 				break
 			}
 		case <-c.ctx.Done():
@@ -210,8 +211,8 @@ func (c *Connection) StartWriter() {
 // StartReader is a goroutine that reads data from the client
 // (读消息Goroutine，用于从客户端中读取数据)
 func (c *Connection) StartReader() {
-	zlog.Ins().InfoF("[Reader Goroutine is running] %s", c.GetConnIdStr())
-	defer zlog.Ins().InfoF("%s [conn Reader exit!] %s", c.RemoteAddr().String(), c.GetConnIdStr())
+	zlog.Ins().InfoF("[Reader Goroutine is running] connID=%s", c.GetConnIdStr())
+	defer zlog.Ins().InfoF("%s [conn Reader exit!] connID=%s", c.RemoteAddr().String(), c.GetConnIdStr())
 	defer c.Stop()
 	defer func() {
 		if err := recover(); err != nil {
@@ -236,7 +237,7 @@ func (c *Connection) StartReader() {
 				zlog.Ins().ErrorF("read msg head [read datalen=%d], error = %s", n, err)
 				return
 			}
-			zlog.Ins().DebugF("read buffer %s %s \n", hex.EncodeToString(buffer[0:n]), c.GetConnIdStr())
+			zlog.Ins().DebugF("read buffer %s connID=%s \n", hex.EncodeToString(buffer[0:n]), c.GetConnIdStr())
 
 			// If normal data is read from the peer, update the heartbeat detection Active state
 			// (正常读取到对端数据，更新心跳检测Active状态)
@@ -377,20 +378,20 @@ func (c *Connection) SendToQueue(data []byte) error {
 	defer idleTimeout.Stop()
 
 	if c.isClosed() == true {
-		return errors.New("Connection closed when send buff msg")
+		return fmt.Errorf("connection closed when send buff msg %s", c.GetConnIdStr())
 	}
 
 	if data == nil {
 		zlog.Ins().ErrorF("Pack data is nil")
 		return errors.New("Pack data is nil")
 	}
-
 	// Send timeout
 	select {
 	case <-c.ctx.Done():
-		return errors.New("connection closed when send buff msg")
+		close(c.msgBuffChan)
+		return fmt.Errorf("connection context done when send buff msg connID=%s", c.GetConnIdStr())
 	case <-idleTimeout.C:
-		return errors.New("send buff msg timeout")
+		return fmt.Errorf("send buff msg timeout connID=%s", c.GetConnIdStr())
 	case c.msgBuffChan <- data:
 		return nil
 	}
@@ -479,11 +480,6 @@ func (c *Connection) finalizer() {
 		c.connManager.Remove(c)
 	}
 
-	// Close all channels associated with the connection
-	if c.msgBuffChan != nil {
-		close(c.msgBuffChan)
-	}
-
 	go func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -494,7 +490,7 @@ func (c *Connection) finalizer() {
 		c.InvokeCloseCallbacks()
 	}()
 
-	zlog.Ins().InfoF("Conn Stop()...ConnID = %d", c.connID)
+	zlog.Ins().InfoF("Conn Stop()...connID=%s", c.GetConnIdStr())
 }
 
 func (c *Connection) callOnConnStart() {
